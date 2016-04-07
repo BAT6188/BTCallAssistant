@@ -39,5 +39,6 @@
         <item>ringing</item>
         <item>offhook</item>
         <item>idle</item>
+        <item>missed</item>
     </string-array>
 </resources>
