@@ -1,0 +1,2 @@
+include ':app', ':BluetoothSPPLibrary'
+project(':BluetoothSPPLibrary').projectDir = new File('app/libs/BluetoothSPPLibrary')

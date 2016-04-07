@@ -1,0 +1,46 @@
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory
+        android:title="@string/pref_category_general" >
+
+        <CheckBoxPreference
+            android:key="enableService"
+            android:defaultValue="true"
+            android:title="@string/pref_title_enable_service"
+            android:summary="@string/pref_summ_enable_service" />
+
+        <kg.delletenebre.btcallassistant.BluetoothDevicesPreference
+            android:key="btDevice"
+            android:dependency="enableService"
+            android:defaultValue=""
+            android:title="@string/pref_title_bt_device"
+            android:negativeButtonText="@null"
+            android:positiveButtonText="@null" />
+
+        <CheckBoxPreference
+            android:key="stopServiceScreenOff"
+            android:dependency="enableService"
+            android:defaultValue="false"
+            android:title="@string/pref_title_stop_service_if_screen_off"
+            android:summary="@string/pref_summ_stop_service_if_screen_off" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="@string/pref_category_debug" >
+
+        <CheckBoxPreference
+            android:key="btPopups"
+            android:defaultValue="true"
+            android:title="@string/pref_title_bt_show_popups" />
+
+        <CheckBoxPreference
+            android:key="debug"
+            android:defaultValue="false"
+            android:title="@string/pref_title_debug"
+            android:summary="@string/pref_summ_debug" />
+
+    </PreferenceCategory>
+
+
+</PreferenceScreen>
