@@ -1,17 +1,29 @@
 package kg.delletenebre.btcallassistant;
 
 import android.app.Service;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.media.Image;
+import android.net.Uri;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
+import android.util.Base64;
 import android.util.Log;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.Map;
 
 import app.akexorcist.bluetotohspp.library.BluetoothSPP;
@@ -33,7 +45,10 @@ public class CommunicationService extends Service {
 
     private static String btDeviceAddress;
     private static BluetoothSPP bt;
+    private static BluetoothAdapter bluetoothAdapter;
     private static String btMessage = "";
+    private static String connectedBluetoothName = "";
+    private static String connectedBluetoothAddress = "";
 
 
 
@@ -45,6 +60,10 @@ public class CommunicationService extends Service {
                 btMessage = "";
 
                 restartService();
+            } else {
+                //Скорее всего входящее соединение
+                connectedBluetoothName = name;
+                connectedBluetoothAddress = address;
             }
 
             if (DEBUG) {
@@ -78,6 +97,28 @@ public class CommunicationService extends Service {
             try {
                 JSONObject dataJsonObj = new JSONObject(message);
 
+                File photoFile = null;
+                String photoBase64 = dataJsonObj.getString("photo");
+
+                if (!photoBase64.isEmpty()) {
+                    try {
+                        photoFile = new File(Environment.getExternalStorageDirectory() + "/download/btca_contact_photo.png");
+
+                        if (!photoFile.exists()) {
+                            photoFile.getParentFile().mkdirs();
+                            photoFile.createNewFile();
+                        }
+
+                        //write the bytes in file
+                        FileOutputStream fos = new FileOutputStream(photoFile);
+                        fos.write(Base64.decode(photoBase64, Base64.DEFAULT));
+                        fos.flush();
+                        fos.close();
+                    } catch (IOException e) {
+                        Log.e(TAG, e.getLocalizedMessage());
+                    }
+                }
+
                 if (DEBUG) {
                     Log.d(TAG, "======== Received data ========");
                     Log.d(TAG, "event: " + dataJsonObj.getString("event"));
@@ -85,9 +126,22 @@ public class CommunicationService extends Service {
                     Log.d(TAG, "state: " + dataJsonObj.getString("state"));
                     Log.d(TAG, "number: " + dataJsonObj.getString("number"));
                     Log.d(TAG, "contact: " + dataJsonObj.getString("contact"));
+                    Log.d(TAG, "photo: " + photoBase64);
                     Log.d(TAG, "message: " + dataJsonObj.getString("message"));
+                    Log.d(TAG, "btname: " + connectedBluetoothName);
+                    Log.d(TAG, "btaddress: " + connectedBluetoothAddress);
                     Log.d(TAG, "===============================");
+
+                    if (MainActivity.activity != null) {
+                        byte[] decodedString = Base64.decode(dataJsonObj.getString("photo"), Base64.DEFAULT);
+                        Bitmap decodedByte = BitmapFactory.decodeByteArray(decodedString, 0, decodedString.length);
+                        if (decodedByte != null && photoFile != null) {
+                            MainActivity.imageView.setImageURI(Uri.fromFile(photoFile));
+                        }
+                    }
                 }
+
+
 
                 Intent i = new Intent(MY_BROADCAST_INTENT);
                 i.putExtra("event", dataJsonObj.getString("event"));
@@ -95,7 +149,16 @@ public class CommunicationService extends Service {
                 i.putExtra("state", dataJsonObj.getString("state"));
                 i.putExtra("number", dataJsonObj.getString("number"));
                 i.putExtra("contact", dataJsonObj.getString("contact"));
+                if (photoFile != null) {
+                    Log.d(TAG, photoFile.getAbsolutePath());
+                    i.putExtra("photo", photoFile.getAbsolutePath());
+                    i.putExtra("photouri", Uri.fromFile(photoFile));
+                } else {
+                    i.putExtra("photo", "");
+                }
                 i.putExtra("message", dataJsonObj.getString("message"));
+                i.putExtra("btname", connectedBluetoothName);
+                i.putExtra("btaddress", connectedBluetoothAddress);
                 service.sendBroadcast(i);
 
             } catch (Exception e) {
@@ -215,6 +278,7 @@ public class CommunicationService extends Service {
         }
     }
     public static void sendMessage(Map<String,String> data) {
+        //data.put("btnamefromdevice", getLocalBluetoothName());
         sendMessage(mapToJson(data).toString());
     }
 
@@ -233,11 +297,15 @@ public class CommunicationService extends Service {
 
     }
 
-
-    private static void sendBroadcastIntent(Context context, Intent intent) {
-        Intent i = new Intent(MY_BROADCAST_INTENT);
-        //i.putExtra("KEY", key);
-        //i.putExtra("VALUE", value);
-        context.sendBroadcast(i);
+    public static String getLocalBluetoothName() {
+        if (bluetoothAdapter == null){
+            bluetoothAdapter = bluetoothAdapter.getDefaultAdapter();
+        }
+        String name = bluetoothAdapter.getName();
+        if (name == null) {
+            name = bluetoothAdapter.getAddress();
+        }
+        return name;
     }
+
 }

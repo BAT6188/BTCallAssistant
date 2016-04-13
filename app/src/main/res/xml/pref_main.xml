@@ -24,6 +24,14 @@
             android:title="@string/pref_title_stop_service_if_screen_off"
             android:summary="@string/pref_summ_stop_service_if_screen_off" />
 
+        <EditTextPreference
+            android:key="photo_max_size"
+            android:defaultValue="@string/default_photo_max_size"
+            android:inputType="number"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="@string/pref_title_photo_max_size" />
+
     </PreferenceCategory>
 
     <PreferenceCategory

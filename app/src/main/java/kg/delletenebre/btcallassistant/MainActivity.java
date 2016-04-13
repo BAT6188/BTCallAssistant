@@ -11,6 +11,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.Spinner;
 import android.widget.Toast;
 
@@ -22,6 +23,9 @@ public class MainActivity extends AppCompatActivity {
 
     private SharedPreferences settings;
     private boolean DEBUG = false;
+
+    public static MainActivity activity;
+    public static ImageView imageView;
 
 
     @Override
@@ -40,16 +44,22 @@ public class MainActivity extends AppCompatActivity {
         final Spinner spinnerState = (Spinner) findViewById(R.id.spinner_state);
         final EditText textNumber = (EditText) findViewById(R.id.number);
         final EditText textContact = (EditText) findViewById(R.id.contact);
+        final EditText textPhoto = (EditText) findViewById(R.id.photo);
         final EditText textSMSMessage = (EditText) findViewById(R.id.message);
+
+        imageView = (ImageView) findViewById(R.id.imageView);
 
         if (textNumber != null) {
             textNumber.setOnFocusChangeListener(new View.OnFocusChangeListener() {
                 @Override
                 public void onFocusChange(View v, boolean hasFocus) {
                     if (!hasFocus) {
-                        if (textContact != null) {
-                            textContact.setText(EventsReceiver.getContactName(MainActivity.this,
-                                    textNumber.getText().toString()));
+                        if (textContact != null && textPhoto != null) {
+
+                            Map<String,String> contact = EventsReceiver.getContactInfo(
+                                    MainActivity.this, textNumber.getText().toString());
+                            textContact.setText(contact.get("name"));
+                            textPhoto.setText(contact.get("photo"));
                         }
                     }
                 }
@@ -71,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
                         data.put("state", spinnerState.getSelectedItem().toString());
                         data.put("number", textNumber.getText().toString());
                         data.put("contact", textContact.getText().toString());
+                        data.put("photo", textPhoto.getText().toString());
                         data.put("message", textSMSMessage.getText().toString());
 
                         if (CommunicationService.service != null) {
@@ -88,10 +99,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onResume() {
         super.onResume();
-
+        activity = this;
         if (settings != null) {
             DEBUG = settings.getBoolean("debug", false);
         }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        activity = null;
     }
 
     @Override

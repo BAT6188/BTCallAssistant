@@ -90,6 +90,7 @@ public class SettingsActivity extends AppCompatActivity {
             setHasOptionsMenu(true);
 
             bindPreferenceSummaryToValue(findPreference("btDevice"));
+            bindPreferenceSummaryToValue(findPreference("photo_max_size"));
         }
 
         @Override

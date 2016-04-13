@@ -3,10 +3,15 @@ package kg.delletenebre.btcallassistant;
 import android.bluetooth.BluetoothAdapter;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
+import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -15,20 +20,29 @@ import android.provider.ContactsContract;
 import android.provider.Telephony;
 import android.telephony.SmsMessage;
 import android.telephony.TelephonyManager;
+import android.util.Base64;
 import android.util.Log;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
 public class EventsReceiver extends BroadcastReceiver {
-    private final String TAG = getClass().getName();
+    private static final String TAG = "EventsReceiver";
     private static boolean incomingCall = false;
     private static String lastCallState = TelephonyManager.EXTRA_STATE_IDLE;
+    private static SharedPreferences settings;
 
     @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent.getAction();
-        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(context);
+        if (settings == null) {
+            settings = PreferenceManager.getDefaultSharedPreferences(context);
+        }
         final boolean DEBUG = settings.getBoolean("debug", false);
         final boolean ENABLE_SERVICE = settings.getBoolean("enableService", true);
         final boolean STOP_SERVICE_SCREEN_OFF = settings.getBoolean("stopServiceScreenOff", false);
@@ -39,6 +53,7 @@ public class EventsReceiver extends BroadcastReceiver {
         data.put("state", "");
         data.put("number", "");
         data.put("contact", "");
+        data.put("photo", "");
         data.put("message", "");
 
         if (action.equals(Intent.ACTION_USER_PRESENT)) {
@@ -93,13 +108,14 @@ public class EventsReceiver extends BroadcastReceiver {
             } else if (callState.equals(TelephonyManager.EXTRA_STATE_RINGING)) {
                 // Трубка не поднята, телефон звонит
                 String phoneNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER);
-                String contactName = getContactName(context, phoneNumber);
+                Map<String,String> contact = getContactInfo(context, phoneNumber);
                 incomingCall = true;
 
                 data.put("type", "incoming");
                 data.put("state", "ringing");
                 data.put("number", phoneNumber);
-                data.put("contact", contactName);
+                data.put("contact", contact.get("name"));
+                data.put("photo", contact.get("photo"));
 
             } else if (callState.equals(TelephonyManager.EXTRA_STATE_OFFHOOK)) {
                 // Телефон находится в режиме звонка (набор номера при исходящем звонке / разговор)
@@ -142,7 +158,7 @@ public class EventsReceiver extends BroadcastReceiver {
             data.put("type", "incoming");
 
             String phoneNumber = "";
-            String contactName = "";
+            Map<String,String> contact = null;
             String smsMessage  = "";
 
             if (Build.VERSION.SDK_INT >= 19) {
@@ -153,9 +169,13 @@ public class EventsReceiver extends BroadcastReceiver {
                         }
                         break;
                     }
-                    phoneNumber = message.getDisplayOriginatingAddress();
-                    contactName = getContactName(context, phoneNumber);
-                    smsMessage  += message.getDisplayMessageBody();
+
+                    if (contact == null) {
+                        phoneNumber = message.getDisplayOriginatingAddress();
+                        contact = getContactInfo(context, phoneNumber);
+                    }
+
+                    smsMessage += message.getDisplayMessageBody();
                 }
             } else {
                 Bundle extras = intent.getExtras();
@@ -169,15 +189,25 @@ public class EventsReceiver extends BroadcastReceiver {
                             }
                             break;
                         }
-                        phoneNumber = message.getDisplayOriginatingAddress();
-                        contactName = getContactName(context, phoneNumber);
+
+                        if (contact == null) {
+                            phoneNumber = message.getDisplayOriginatingAddress();
+                            contact = getContactInfo(context, phoneNumber);
+                        }
+
                         smsMessage += message.getDisplayMessageBody();
                     }
                 }
             }
 
             data.put("number", phoneNumber);
-            data.put("contact", contactName);
+            if (contact != null) {
+                data.put("contact", contact.get("name"));
+                data.put("photo", contact.get("photo"));
+            } else {
+                data.put("contact", phoneNumber);
+                data.put("photo", "");
+            }
             data.put("message", smsMessage);
 
             if (CommunicationService.service != null) {
@@ -192,20 +222,43 @@ public class EventsReceiver extends BroadcastReceiver {
 
     }
 
-    public static String getContactName(Context context, String phoneNumber) {
+    public static Map<String,String> getContactInfo(Context context, String phoneNumber) {
+        Map<String,String> result = new HashMap<>();
+        String contactName = phoneNumber;
+        String contactPhoto = "";
+
+        result.put("name", contactName);
+        result.put("photo", contactPhoto);
+
         try {
             ContentResolver cr = context.getContentResolver();
             Uri uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
                     Uri.encode(phoneNumber));
-            Cursor cursor = cr.query(uri, new String[]{ContactsContract.PhoneLookup.DISPLAY_NAME},
+            Cursor cursor = cr.query(uri,
+                    new String[]{
+                            ContactsContract.Contacts._ID,
+                            ContactsContract.PhoneLookup.DISPLAY_NAME},
                     null, null, null);
+
             if (cursor == null) {
-                return phoneNumber;
+                return result;
             }
-            String contactName = "";
+
             if (cursor.moveToFirst()) {
                 contactName = cursor.getString(
                         cursor.getColumnIndex(ContactsContract.PhoneLookup.DISPLAY_NAME));
+
+                long contactId = cursor.getLong(
+                        cursor.getColumnIndex(ContactsContract.Contacts.Photo._ID));
+
+                Bitmap contactBitmap = loadContactPhoto(cr, contactId);
+                if (contactBitmap != null) {
+                    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                    contactBitmap.compress(Bitmap.CompressFormat.PNG, 100, byteArrayOutputStream);
+                    byte[] byteArray = byteArrayOutputStream.toByteArray();
+
+                    contactPhoto = Base64.encodeToString(byteArray, Base64.DEFAULT);
+                }
             }
 
             if (!cursor.isClosed()) {
@@ -216,9 +269,58 @@ public class EventsReceiver extends BroadcastReceiver {
                 contactName = phoneNumber;
             }
 
-            return contactName;
-        } catch (Exception ex) {
-            return phoneNumber;
+
+        } catch (Exception e) {
+            Log.e(TAG, e.getLocalizedMessage());
         }
+
+        result.put("name", contactName);
+        result.put("photo", contactPhoto);
+
+        return result;
+    }
+
+
+    public static Bitmap loadContactPhoto(ContentResolver contentResolver, long contactId) {
+        Uri uri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_URI, String.valueOf(contactId));
+        InputStream photoStream = ContactsContract.Contacts.openContactPhotoInputStream(contentResolver, uri, true);
+        BufferedInputStream buf = new BufferedInputStream(photoStream);
+        Bitmap bitmap = BitmapFactory.decodeStream(buf);
+
+        try {
+            buf.close();
+        } catch (IOException e) {
+            Log.d(TAG, e.getLocalizedMessage());
+        }
+
+        int maxPhotoSize = 96;
+        if (settings != null) {
+            maxPhotoSize = Integer.parseInt(settings.getString("photo_max_size", "96"));
+            if (maxPhotoSize < 32) {
+                maxPhotoSize = 32;
+            }
+        }
+        if (bitmap.getWidth() > maxPhotoSize || bitmap.getHeight() > maxPhotoSize) {
+            bitmap = resizeBitmap(bitmap, maxPhotoSize, maxPhotoSize);
+        }
+        return bitmap;
+    }
+
+    public static Bitmap resizeBitmap(Bitmap bm, int newWidth, int newHeight) {
+        int width = bm.getWidth();
+        int height = bm.getHeight();
+        float scaleWidth = ((float) newWidth) / width;
+        float scaleHeight = ((float) newHeight) / height;
+        // CREATE A MATRIX FOR THE MANIPULATION
+        Matrix matrix = new Matrix();
+        // RESIZE THE BIT MAP
+        matrix.postScale(scaleWidth, scaleHeight);
+
+        // "RECREATE" THE NEW BITMAP
+        Bitmap resizedBitmap = Bitmap.createBitmap(
+                bm, 0, 0, width, height, matrix, false);
+        bm.recycle();
+
+        return resizedBitmap;
     }
 }

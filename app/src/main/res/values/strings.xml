@@ -18,6 +18,9 @@
     <string name="pref_title_stop_service_if_screen_off">Stop service if screen is off</string>
     <string name="pref_summ_stop_service_if_screen_off">Stop the service if screen is off and start service when screen is on.</string>
 
+    <string name="pref_title_photo_max_size">Maximum size of contact photo (px)</string>
+    <string name="default_photo_max_size" translatable="false">96</string>
+
     <string name="pref_title_bt_show_popups">Show bluetooth warning popups</string>
     <string name="bt_not_available">Bluetooth is not available</string>
     <string name="bt_not_enabled">Bluetooth is off. Please turn it on to continue</string>
